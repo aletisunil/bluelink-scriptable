@@ -10,7 +10,7 @@ nav_order: 7
 {: .info-title }
 > Multiple Widgets one for each of your EVs.
 >
-> For households with more than one Hyundai or Kia EV you can effectively run multiple copies of the egmp-bluelink app, each one configured to fetch data on a specifically targeted car.
+> For households with more than one Hyundai or Kia EV you can effectively run multiple copies of the bluelink-scriptable app, each one configured to fetch data on a specifically targeted car.
 >
 > Each car requires its own configuration and can be within the same Bluelink account or across different accounts or even Manufacturers
 {: .fs-5 .fw-300 }
@@ -20,7 +20,7 @@ nav_order: 7
 Since v1.2.0 multi-car support is enabled by default. Simply setup the [script as normal](./install.md) for your first car. 
 {: .fs-5 .fw-300 }
 
-Once setup, within the Scriptable app press and hold the "egmp-bluelink" row and select "Duplicate", this will bring up a code window - just click on "done". This will produce a script likely called "egmp-bluelink 1", feel free to rename to something more appropiate (press and hold and choose rename)
+Once setup, within the Scriptable app press and hold the "bluelink-scriptable" row and select "Duplicate", this will bring up a code window - just click on "done". This will produce a script likely called "bluelink-scriptable 1", feel free to rename to something more appropiate (press and hold and choose rename)
 {: .fs-5 .fw-300 }
 
 Now open the new script, it will prompt for Bluelink settings as per the first install, proceed to configure the same settings but your second car. Once setup you can configure a new widget for this second car - just ensure when you configure the widget you select the new scriptable script.

@@ -38,6 +38,6 @@ The code is written in typescipt and transpiled to Javascript, which the scripta
 ```
 cd src
 npm i
-npm run build ./src/index.ts egmp-bluelink
+npm run build ./src/index.ts bluelink-scriptable
 ```
 

@@ -60,6 +60,6 @@ Now perform the series of actions you need logs for (i.e simulate the bug you ar
 
 ### How do I get the full list of all debug logs?
 
-If you wish to look at the logs outside of the app, they are stored within the Scriptable directory ojn iCloud drive. The in-use file is called `egmp-bluelink.log`. Log files are automatically renamed when they get to 100kb in size, hence you will see older log files named `egmp-bluelink.log.20250318150755-0700` or similar. The timestamp is the date the file was renamed.
+If you wish to look at the logs outside of the app, they are stored within the Scriptable directory ojn iCloud drive. The in-use file is called `bluelink-scriptable.log`. Log files are automatically renamed when they get to 100kb in size, hence you will see older log files named `bluelink-scriptable.log.20250318150755-0700` or similar. The timestamp is the date the file was renamed.
 
 All log files are stored within the same Scriptable directory as the scripts themselves. Note as detailed above these log files do contain your credentials. If you are asked, or provide them either directly to myself through email or via a Github issue please ensure you open the log files and redact any of your credentials (login and password)

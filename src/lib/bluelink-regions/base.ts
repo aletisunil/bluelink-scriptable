@@ -1,5 +1,6 @@
 import { Config } from '../../config'
 import { defaultImage } from '../../resources/defaultImage'
+import { sonataDefaultImage } from '../../resources/sonataDefaultImage'
 import { Logger } from '../logger'
 import { Buffer } from 'buffer'
 const KEYCHAIN_CACHE_KEY = 'egmp-bluelink-cache'
@@ -130,6 +131,7 @@ const carImageMap: Record<string, string> = {
   ev9: 'ev9',
   kona: 'kona',
   niro: 'niro',
+  sonata: 'sonata',
   default: 'ioniq5',
 }
 
@@ -282,6 +284,86 @@ export class Bluelink {
     this.lastCommandSent = Date.now()
   }
 
+  protected getNestedNumber(data: any, path: (string | number)[]): number | undefined {
+    let current = data
+    for (const key of path) {
+      if (current === undefined || current === null) return undefined
+      current = current[key]
+    }
+    const num = Number(current)
+    return Number.isFinite(num) ? num : undefined
+  }
+
+  protected getNoEVFuelPercent(status: any): number | undefined {
+    const possiblePaths: (string | number)[][] = [
+      ['fuelLevel'],
+      ['fuelLevel', 'value'],
+      ['fuelLevelStatus'],
+      ['fuelLevelStatus', 'value'],
+      ['fuelLevelState'],
+      ['fuelLevelState', 'value'],
+      ['fuelRemain'],
+      ['fuelRemain', 'value'],
+      ['fuelLevelRatio'],
+      ['fuelLevelRatio', 'value'],
+      ['vehicleStatus', 'fuelLevel'],
+      ['vehicleStatus', 'fuelLevel', 'value'],
+    ]
+
+    for (const path of possiblePaths) {
+      const parsed = this.getNestedNumber(status, path)
+      if (parsed !== undefined && parsed >= 0) {
+        return Math.min(100, Math.floor(parsed))
+      }
+    }
+    return undefined
+  }
+
+  protected getNoEVRange(status: any): number | undefined {
+    const dte = this.getNestedNumber(status, ['dte', 'value'])
+    if (dte !== undefined && dte > 0) {
+      return Math.floor(dte)
+    }
+
+    const possiblePaths: (string | number)[][] = [
+      ['drvDistance', 0, 'rangeByFuel', 'gasModeRange', 'value'],
+      ['drvDistance', 0, 'rangeByFuel', 'totalAvailableRange', 'value'],
+      ['evStatus', 'drvDistance', 0, 'rangeByFuel', 'gasModeRange', 'value'],
+      ['evStatus', 'drvDistance', 0, 'rangeByFuel', 'totalAvailableRange', 'value'],
+      ['dteValue'],
+      ['distanceToEmpty'],
+      ['distanceToEmpty', 'value'],
+      ['fuelDistanceToEmpty'],
+      ['fuelDistanceToEmpty', 'value'],
+      ['vehicleStatus', 'distanceToEmpty'],
+      ['vehicleStatus', 'distanceToEmpty', 'value'],
+    ]
+
+    for (const path of possiblePaths) {
+      const parsed = this.getNestedNumber(status, path)
+      if (parsed !== undefined && parsed > 0) {
+        return Math.floor(parsed)
+      }
+    }
+    return undefined
+  }
+
+  protected getNoEVLocation(status: any): Location | undefined {
+    const lat =
+      this.getNestedNumber(status, ['vehicleLocation', 'coord', 'lat']) ??
+      this.getNestedNumber(status, ['location', 'coord', 'lat']) ??
+      this.getNestedNumber(status, ['gpsDetail', 'coord', 'lat']) ??
+      this.getNestedNumber(status, ['coord', 'lat'])
+    const lon =
+      this.getNestedNumber(status, ['vehicleLocation', 'coord', 'lon']) ??
+      this.getNestedNumber(status, ['location', 'coord', 'lon']) ??
+      this.getNestedNumber(status, ['gpsDetail', 'coord', 'lon']) ??
+      this.getNestedNumber(status, ['coord', 'lon'])
+
+    if (lat === undefined || lon === undefined) return undefined
+    return { latitude: `${lat}`, longitude: `${lon}` }
+  }
+
   protected defaultNoEVStatus(
     lastRemoteCheck: Date,
     status: any,
@@ -290,6 +372,9 @@ export class Bluelink {
     chargeLimit?: ChargeLimit,
     location?: Location,
   ): BluelinkStatus {
+    const parsedRange = this.getNoEVRange(status)
+    const parsedFuelPercent = this.getNoEVFuelPercent(status)
+    const parsedLocation = this.getNoEVLocation(status)
     return {
       lastStatusCheck: Date.now(),
       lastRemoteStatusCheck: forceUpdate ? Date.now() : lastRemoteCheck.getTime(),
@@ -297,13 +382,19 @@ export class Bluelink {
       isPluggedIn: this.cache ? this.cache.status.isCharging : false,
       chargingPower: this.cache ? this.cache.status.chargingPower : 0,
       remainingChargeTimeMins: this.cache ? this.cache.status.remainingChargeTimeMins : 0,
-      range: this.cache ? this.cache.status.range : 0,
-      soc: this.cache ? this.cache.status.soc : 0,
+      range: parsedRange !== undefined ? parsedRange : this.cache ? this.cache.status.range : 0,
+      soc: parsedFuelPercent !== undefined ? parsedFuelPercent : this.cache ? this.cache.status.soc : 0,
       locked: status.doorLock,
       climate: status.airCtrlOn,
       twelveSoc: status.battery && status.battery.batSoc ? status.battery.batSoc : 0,
       odometer: odometer ? odometer : this.cache ? this.cache.status.odometer : 0,
-      location: location ? location : this.cache ? this.cache.status.location : undefined,
+      location: location
+        ? location
+        : parsedLocation
+          ? parsedLocation
+          : this.cache
+            ? this.cache.status.location
+            : undefined,
       chargeLimit:
         chargeLimit && chargeLimit.acPercent > 0 ? chargeLimit : this.cache ? this.cache.status.chargeLimit : undefined,
     }
@@ -621,9 +712,13 @@ export class Bluelink {
       fs.writeImage(localFilePath, image)
       return image
     } catch (_error) {
+      // Sonata assets may not be available on remote host yet; retry with known sonata color first.
+      if (retryDefaultOnFail && carFilePrefix === 'sonata' && carColour !== 'portofino-gray') {
+        return await this.getCarImage('portofino-gray', false, false, carColour)
+      }
       // retry with white which always exists - save as requested colour so we dont keep retrying all the time.
       if (retryDefaultOnFail) return await this.getCarImage('white', false, false, carColour)
-      return Image.fromData(Data.fromBase64String(defaultImage))
+      return Image.fromData(Data.fromBase64String(carFilePrefix === 'sonata' ? sonataDefaultImage : defaultImage))
     }
   }
 

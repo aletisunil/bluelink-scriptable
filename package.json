@@ -4,10 +4,10 @@
   "description": "testing",
   "main": "index.js",
   "scripts": {
-    "build": "source ./build.sh; build",
+    "build": "source ./build.sh; build ./src/index.ts bluelink-scriptable",
     "prebuild": "npm run lint",
     "lint": "npm run prettier && eslint \"*.ts\" \"src/**/*.ts\" --fix",
-    "watch": "source ./build.sh; build_and_watch",
+    "watch": "source ./build.sh; build_and_watch ./src/index.ts bluelink-scriptable",
     "prettier": "prettier --log-level warn --write \"*.ts\" \"src/**/*.ts\""
   },
   "author": "",

@@ -36,7 +36,7 @@ function reset() {
           confirmButtonTitle: 'Delete all Settings/Data',
           onConfirm: () => {
             textInput('Confirm script name to reset', {
-              initValue: 'egmp-bluelink',
+              initValue: 'bluelink-scriptable',
               submitText: 'Reset',
               onSubmit: (name) => {
                 if (name) {

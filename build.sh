@@ -14,9 +14,9 @@ has_param() {
 # Supported flags:
 #  --watch: Rebuild automatically when changes are detected
 build() {
-  local file_path=$1
+  local file_path=${1:-./src/index.ts}
   local name_override=$2
-  local file=$(basename $file_path)
+  local file=$(basename "$file_path")
   if [[ -z $name_override ]]; then
     local file_noext="${file%.*}"
   else
@@ -29,5 +29,5 @@ build() {
 }
 
 build_and_watch() {
-  build "$1" --watch
+  build "${1:-./src/index.ts}" "${2:-}" --watch
 }

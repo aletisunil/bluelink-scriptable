@@ -1,6 +1,6 @@
 import version from '../version.json'
 
-const ASSET_BINARY = 'egmp-bluelink.js'
+const ASSET_BINARY = 'bluelink-scriptable.js'
 
 export interface GithubRelease {
   version: string

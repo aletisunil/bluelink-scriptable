@@ -41,6 +41,18 @@ interface WidgetRefresh {
   status: Status
 }
 
+function isGasWidgetVehicle(status: Status): boolean {
+  return status.car.modelName.toLocaleLowerCase().includes('sonata')
+}
+
+function getLockWidgetState(status: Status): { text: 'Locked' | 'Unlocked'; icon: 'locked' | 'unlocked' } {
+  return status.status.locked ? { text: 'Locked', icon: 'locked' } : { text: 'Unlocked', icon: 'unlocked' }
+}
+
+function getRangeWidgetText(status: Status, bl: Bluelink): string {
+  return `${status.status.range} ${bl.getDistanceUnit()}`
+}
+
 export function getWidgetLogger(): Logger {
   if (!WIDGET_LOGGER) WIDGET_LOGGER = new Logger(WIDGET_LOG_FILE, 100)
   return WIDGET_LOGGER
@@ -253,6 +265,7 @@ export function createErrorWidget(message: string) {
 export async function createMediumWidget(config: Config, bl: Bluelink) {
   const refresh = await refreshDataForWidgetWithTimeout(bl, config)
   const status = refresh.status
+  const isGasVehicle = isGasWidgetVehicle(status)
 
   // Prepare image
   const appIcon = await bl.getCarImage(config.carColor)
@@ -297,22 +310,7 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
   batteryInfoStack.layoutVertically()
   batteryInfoStack.addSpacer()
 
-  // Range
-  const rangeStack = batteryInfoStack.addStack()
-  rangeStack.addSpacer()
-  const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
-  const rangeElement = rangeStack.addText(rangeText)
-  rangeElement.font = Font.mediumSystemFont(20)
-  rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
-  rangeElement.rightAlignText()
-  // batteryInfoStack.addSpacer()
-
-  // set status from BL status response
   const isCharging = status.status.isCharging
-  const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
-  const remainingChargingTime = status.status.remainingChargeTimeMins
-  const chargingKw = getChargingPowerString(status.status.chargingPower)
   const odometer =
     status.car.odometer === undefined
       ? status.status.odometer
@@ -321,50 +319,85 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
         : status.car.odometer
   const lastSeen = new Date(status.status.lastRemoteStatusCheck)
 
-  // Battery Percent Value
-  const batteryPercentStack = batteryInfoStack.addStack()
-  batteryPercentStack.addSpacer()
-  batteryPercentStack.centerAlignContent()
-  const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
-  const batterySymbolElement = batteryPercentStack.addImage(image)
-  batterySymbolElement.imageSize = new Size(40, 40)
-  const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
-  if (chargingIcon) {
-    const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
-    chargingElement.imageSize = new Size(25, 25)
-  }
+  if (isGasVehicle) {
+    const lockState = getLockWidgetState(status)
+    const gasRangeText = getRangeWidgetText(status, bl)
 
-  batteryPercentStack.addSpacer(5)
+    const rangeStack = batteryInfoStack.addStack()
+    rangeStack.addSpacer()
+    const rangeElement = rangeStack.addText(gasRangeText)
+    rangeElement.font = Font.mediumSystemFont(20)
+    rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+    rangeElement.rightAlignText()
 
-  const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
-  batteryPercentText.font = Font.mediumSystemFont(20)
+    const lockStateStack = batteryInfoStack.addStack()
+    lockStateStack.addSpacer()
+    const lockIcon = lockStateStack.addImage(await getTintedIconAsync(lockState.icon))
+    lockIcon.imageSize = new Size(15, 15)
+    lockStateStack.addSpacer(4)
+    const lockText = lockStateStack.addText(lockState.text)
+    lockText.font = Font.mediumSystemFont(14)
+    lockText.textColor = DARK_MODE ? Color.white() : Color.black()
+  } else {
+    // Range
+    const rangeStack = batteryInfoStack.addStack()
+    rangeStack.addSpacer()
+    const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
+    const rangeElement = rangeStack.addText(rangeText)
+    rangeElement.font = Font.mediumSystemFont(20)
+    rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+    rangeElement.rightAlignText()
 
-  if (isCharging) {
-    const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime)
-    const batteryChargingTimeStack = mainStack.addStack()
-    batteryChargingTimeStack.layoutHorizontally()
-    batteryChargingTimeStack.addSpacer()
-    // batteryChargingTimeStack.addSpacer()
+    // set status from BL status response
+    const isPluggedIn = status.status.isPluggedIn
+    const batteryPercent = status.status.soc
+    const remainingChargingTime = status.status.remainingChargeTimeMins
+    const chargingKw = getChargingPowerString(status.status.chargingPower)
 
-    const chargingSpeedElement = batteryChargingTimeStack.addText(`${chargingKw}`)
-    chargingSpeedElement.font = Font.mediumSystemFont(14)
-    chargingSpeedElement.textOpacity = 0.9
-    chargingSpeedElement.textColor = DARK_MODE ? Color.white() : Color.black()
-    chargingSpeedElement.rightAlignText()
-    batteryChargingTimeStack.addSpacer(3)
+    // Battery Percent Value
+    const batteryPercentStack = batteryInfoStack.addStack()
+    batteryPercentStack.addSpacer()
+    batteryPercentStack.centerAlignContent()
+    const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
+    const batterySymbolElement = batteryPercentStack.addImage(image)
+    batterySymbolElement.imageSize = new Size(40, 40)
+    const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
+    if (chargingIcon) {
+      const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
+      chargingElement.imageSize = new Size(25, 25)
+    }
 
-    const chargingTimeIconElement = batteryChargingTimeStack.addImage(
-      await getTintedIconAsync('charging-complete-widget'),
-    )
-    chargingTimeIconElement.imageSize = new Size(15, 15)
-    batteryChargingTimeStack.addSpacer(3)
+    batteryPercentStack.addSpacer(5)
 
-    const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
-    chargingTimeElement.font = Font.mediumSystemFont(14)
-    chargingTimeElement.textOpacity = 0.9
-    chargingTimeElement.textColor = DARK_MODE ? Color.white() : Color.black()
-    chargingTimeElement.rightAlignText()
+    const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
+    batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+    batteryPercentText.font = Font.mediumSystemFont(20)
+
+    if (isCharging) {
+      const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime)
+      const batteryChargingTimeStack = mainStack.addStack()
+      batteryChargingTimeStack.layoutHorizontally()
+      batteryChargingTimeStack.addSpacer()
+
+      const chargingSpeedElement = batteryChargingTimeStack.addText(`${chargingKw}`)
+      chargingSpeedElement.font = Font.mediumSystemFont(14)
+      chargingSpeedElement.textOpacity = 0.9
+      chargingSpeedElement.textColor = DARK_MODE ? Color.white() : Color.black()
+      chargingSpeedElement.rightAlignText()
+      batteryChargingTimeStack.addSpacer(3)
+
+      const chargingTimeIconElement = batteryChargingTimeStack.addImage(
+        await getTintedIconAsync('charging-complete-widget'),
+      )
+      chargingTimeIconElement.imageSize = new Size(15, 15)
+      batteryChargingTimeStack.addSpacer(3)
+
+      const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
+      chargingTimeElement.font = Font.mediumSystemFont(14)
+      chargingTimeElement.textOpacity = 0.9
+      chargingTimeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+      chargingTimeElement.rightAlignText()
+    }
   }
   mainStack.addSpacer()
 
@@ -412,6 +445,7 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
 export async function createSmallWidget(config: Config, bl: Bluelink) {
   const refresh = await refreshDataForWidgetWithTimeout(bl, config)
   const status = refresh.status
+  const isGasVehicle = isGasWidgetVehicle(status)
 
   // Prepare image
   const appIcon = await bl.getCarImage(config.carColor)
@@ -441,68 +475,85 @@ export async function createSmallWidget(config: Config, bl: Bluelink) {
   batteryInfoStack.layoutVertically()
   batteryInfoStack.addSpacer()
 
-  // Range
-  const rangeStack = batteryInfoStack.addStack()
-  rangeStack.addSpacer()
-  const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
-  const rangeElement = rangeStack.addText(rangeText)
-  rangeElement.font = Font.mediumSystemFont(20)
-  rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
-  rangeElement.rightAlignText()
-  // batteryInfoStack.addSpacer()
-
-  // set status from BL status response
   const isCharging = status.status.isCharging
-  const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
-  const remainingChargingTime = status.status.remainingChargeTimeMins
-  const chargingKw = getChargingPowerString(status.status.chargingPower)
   const lastSeen = new Date(status.status.lastRemoteStatusCheck)
 
-  // Battery Percent Value
-  const batteryPercentStack = batteryInfoStack.addStack()
-  batteryPercentStack.addSpacer()
-  batteryPercentStack.centerAlignContent()
-  const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
-  const batterySymbolElement = batteryPercentStack.addImage(image)
-  batterySymbolElement.imageSize = new Size(40, 40)
-  const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
-  if (chargingIcon) {
-    const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
-    chargingElement.imageSize = new Size(25, 25)
-  }
+  if (isGasVehicle) {
+    const lockState = getLockWidgetState(status)
+    const gasRangeText = getRangeWidgetText(status, bl)
 
-  // batteryPercentStack.addSpacer(5)
+    const rangeStack = batteryInfoStack.addStack()
+    rangeStack.addSpacer()
+    const rangeElement = rangeStack.addText(gasRangeText)
+    rangeElement.font = Font.mediumSystemFont(15)
+    rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+    rangeElement.rightAlignText()
 
-  const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
-  batteryPercentText.font = Font.mediumSystemFont(20)
+    const lockStateStack = batteryInfoStack.addStack()
+    lockStateStack.addSpacer()
+    const lockIcon = lockStateStack.addImage(await getTintedIconAsync(lockState.icon))
+    lockIcon.imageSize = new Size(12, 12)
+    lockStateStack.addSpacer(3)
+    const lockText = lockStateStack.addText(lockState.text)
+    lockText.font = Font.mediumSystemFont(12)
+    lockText.textColor = DARK_MODE ? Color.white() : Color.black()
+  } else {
+    // Range
+    const rangeStack = batteryInfoStack.addStack()
+    rangeStack.addSpacer()
+    const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
+    const rangeElement = rangeStack.addText(rangeText)
+    rangeElement.font = Font.mediumSystemFont(20)
+    rangeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+    rangeElement.rightAlignText()
 
-  if (isCharging) {
-    const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime, 'short', true)
-    const batteryChargingTimeStack = mainStack.addStack()
-    batteryChargingTimeStack.layoutHorizontally()
-    // batteryChargingTimeStack.addSpacer()
-    batteryChargingTimeStack.addSpacer()
+    const isPluggedIn = status.status.isPluggedIn
+    const batteryPercent = status.status.soc
+    const remainingChargingTime = status.status.remainingChargeTimeMins
+    const chargingKw = getChargingPowerString(status.status.chargingPower)
 
-    const chargingSpeedElement = batteryChargingTimeStack.addText(`${chargingKw}`)
-    chargingSpeedElement.font = Font.mediumSystemFont(13)
-    chargingSpeedElement.textOpacity = 0.9
-    chargingSpeedElement.textColor = DARK_MODE ? Color.white() : Color.black()
-    chargingSpeedElement.leftAlignText()
-    batteryChargingTimeStack.addSpacer(3)
+    // Battery Percent Value
+    const batteryPercentStack = batteryInfoStack.addStack()
+    batteryPercentStack.addSpacer()
+    batteryPercentStack.centerAlignContent()
+    const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
+    const batterySymbolElement = batteryPercentStack.addImage(image)
+    batterySymbolElement.imageSize = new Size(40, 40)
+    const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
+    if (chargingIcon) {
+      const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
+      chargingElement.imageSize = new Size(25, 25)
+    }
 
-    const chargingTimeIconElement = batteryChargingTimeStack.addImage(
-      await getTintedIconAsync('charging-complete-widget'),
-    )
-    chargingTimeIconElement.imageSize = new Size(15, 15)
-    batteryChargingTimeStack.addSpacer(3)
+    const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
+    batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+    batteryPercentText.font = Font.mediumSystemFont(20)
 
-    const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
-    chargingTimeElement.font = Font.mediumSystemFont(12)
-    chargingTimeElement.textOpacity = 0.9
-    chargingTimeElement.textColor = DARK_MODE ? Color.white() : Color.black()
-    chargingTimeElement.rightAlignText()
+    if (isCharging) {
+      const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime, 'short', true)
+      const batteryChargingTimeStack = mainStack.addStack()
+      batteryChargingTimeStack.layoutHorizontally()
+      batteryChargingTimeStack.addSpacer()
+
+      const chargingSpeedElement = batteryChargingTimeStack.addText(`${chargingKw}`)
+      chargingSpeedElement.font = Font.mediumSystemFont(13)
+      chargingSpeedElement.textOpacity = 0.9
+      chargingSpeedElement.textColor = DARK_MODE ? Color.white() : Color.black()
+      chargingSpeedElement.leftAlignText()
+      batteryChargingTimeStack.addSpacer(3)
+
+      const chargingTimeIconElement = batteryChargingTimeStack.addImage(
+        await getTintedIconAsync('charging-complete-widget'),
+      )
+      chargingTimeIconElement.imageSize = new Size(15, 15)
+      batteryChargingTimeStack.addSpacer(3)
+
+      const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
+      chargingTimeElement.font = Font.mediumSystemFont(12)
+      chargingTimeElement.textOpacity = 0.9
+      chargingTimeElement.textColor = DARK_MODE ? Color.white() : Color.black()
+      chargingTimeElement.rightAlignText()
+    }
   }
   mainStack.addSpacer()
 
@@ -529,8 +580,13 @@ export async function createHomeScreenCircleWidget(config: Config, bl: Bluelink)
   const widget = new ListWidget()
   widget.refreshAfterDate = refresh.nextRefresh
 
-  const progressStack = await progressCircle(widget, status.status.soc)
-  const mainIcon = status.status.isCharging ? SFSymbol.named('bolt.car') : SFSymbol.named('car.fill')
+  const progressStack = await progressCircle(widget, isGasWidgetVehicle(status) ? 100 : status.status.soc)
+  const gasLockState = getLockWidgetState(status)
+  const mainIcon = isGasWidgetVehicle(status)
+    ? SFSymbol.named(gasLockState.icon === 'locked' ? 'lock.fill' : 'lock.open.fill')
+    : status.status.isCharging
+      ? SFSymbol.named('bolt.car')
+      : SFSymbol.named('car.fill')
   const wmainIcon = progressStack.addImage(mainIcon.image)
   wmainIcon.imageSize = new Size(36, 36)
   wmainIcon.tintColor = new Color('#ffffff')
@@ -541,6 +597,7 @@ export async function createHomeScreenCircleWidget(config: Config, bl: Bluelink)
 export async function createHomeScreenRectangleWidget(config: Config, bl: Bluelink) {
   const refresh = await refreshDataForWidgetWithTimeout(bl, config)
   const status = refresh.status
+  const isGasVehicle = isGasWidgetVehicle(status)
 
   const widget = new ListWidget()
   widget.refreshAfterDate = refresh.nextRefresh
@@ -550,8 +607,13 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
   widgetStack.layoutVertically()
   const mainStack = widgetStack.addStack()
 
-  const iconStack = await progressCircle(mainStack, status.status.soc)
-  const mainIcon = status.status.isCharging ? SFSymbol.named('bolt.car') : SFSymbol.named('car.fill')
+  const iconStack = await progressCircle(mainStack, isGasVehicle ? 100 : status.status.soc)
+  const gasLockState = getLockWidgetState(status)
+  const mainIcon = isGasVehicle
+    ? SFSymbol.named(gasLockState.icon === 'locked' ? 'lock.fill' : 'lock.open.fill')
+    : status.status.isCharging
+      ? SFSymbol.named('bolt.car')
+      : SFSymbol.named('car.fill')
   const wmainIcon = iconStack.addImage(mainIcon.image)
   wmainIcon.imageSize = new Size(36, 36)
   wmainIcon.tintColor = new Color('#ffffff')
@@ -561,58 +623,71 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
   batteryInfoStack.layoutVertically()
   batteryInfoStack.addSpacer(5)
 
-  // Range
-  const rangeStack = batteryInfoStack.addStack()
-  rangeStack.addSpacer()
-  const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
-  const rangeElement = rangeStack.addText(rangeText)
-  rangeElement.font = Font.boldSystemFont(15)
-  rangeElement.textColor = Color.white()
-  rangeElement.rightAlignText()
+  if (isGasVehicle) {
+    const lockRow = batteryInfoStack.addStack()
+    lockRow.addSpacer()
+    const lockIcon = lockRow.addImage(await getTintedIconAsync(gasLockState.icon))
+    lockIcon.tintColor = new Color('#ffffff')
+    lockIcon.imageSize = new Size(15, 15)
+    lockRow.addSpacer(4)
+    const lockText = lockRow.addText(getRangeWidgetText(status, bl))
+    lockText.textColor = Color.white()
+    lockText.font = Font.boldSystemFont(15)
+    lockText.rightAlignText()
+  } else {
+    // Range
+    const rangeStack = batteryInfoStack.addStack()
+    rangeStack.addSpacer()
+    const rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
+    const rangeElement = rangeStack.addText(rangeText)
+    rangeElement.font = Font.boldSystemFont(15)
+    rangeElement.textColor = Color.white()
+    rangeElement.rightAlignText()
 
-  // set status from BL status response
-  const isCharging = status.status.isCharging
-  const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
-  const remainingChargingTime = status.status.remainingChargeTimeMins
-  const lastSeen = new Date(status.status.lastRemoteStatusCheck)
+    // set status from BL status response
+    const isCharging = status.status.isCharging
+    const isPluggedIn = status.status.isPluggedIn
+    const batteryPercent = status.status.soc
+    const remainingChargingTime = status.status.remainingChargeTimeMins
+    const lastSeen = new Date(status.status.lastRemoteStatusCheck)
 
-  // Battery Percent Value
-  const batteryPercentStack = batteryInfoStack.addStack()
-  batteryPercentStack.centerAlignContent()
-  batteryPercentStack.addSpacer()
-  const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
-  if (chargingIcon) {
-    const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
-    chargingElement.tintColor = new Color('#ffffff')
-    chargingElement.imageSize = new Size(15, 15)
-    chargingElement.rightAlignImage()
-  }
-
-  batteryPercentStack.addSpacer(3)
-  const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
-  batteryPercentText.font = Font.boldSystemFont(15)
-
-  if (isCharging) {
-    const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime, 'short', true)
-    const batteryChargingTimeStack = batteryInfoStack.addStack()
-
-    // bug in dynamic spacing means we only set spacing if string is less than 10 characters
-    if (chargeComplete.length < 10) {
-      batteryChargingTimeStack.addSpacer()
+    // Battery Percent Value
+    const batteryPercentStack = batteryInfoStack.addStack()
+    batteryPercentStack.centerAlignContent()
+    batteryPercentStack.addSpacer()
+    const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
+    if (chargingIcon) {
+      const chargingElement = batteryPercentStack.addImage(await getTintedIconAsync(chargingIcon))
+      chargingElement.tintColor = new Color('#ffffff')
+      chargingElement.imageSize = new Size(15, 15)
+      chargingElement.rightAlignImage()
     }
 
-    const chargingTimeIconElement = batteryChargingTimeStack.addImage(SFSymbol.named('clock.fill').image)
-    chargingTimeIconElement.tintColor = new Color('#ffffff')
-    chargingTimeIconElement.imageSize = new Size(14, 14)
-    batteryChargingTimeStack.addSpacer(3)
+    batteryPercentStack.addSpacer(3)
+    const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
+    batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+    batteryPercentText.font = Font.boldSystemFont(15)
 
-    const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
-    chargingTimeElement.font = Font.mediumMonospacedSystemFont(12)
-    chargingTimeElement.textOpacity = 0.9
-    chargingTimeElement.textColor = Color.white()
-    chargingTimeElement.rightAlignText()
+    if (isCharging) {
+      const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime, 'short', true)
+      const batteryChargingTimeStack = batteryInfoStack.addStack()
+
+      // bug in dynamic spacing means we only set spacing if string is less than 10 characters
+      if (chargeComplete.length < 10) {
+        batteryChargingTimeStack.addSpacer()
+      }
+
+      const chargingTimeIconElement = batteryChargingTimeStack.addImage(SFSymbol.named('clock.fill').image)
+      chargingTimeIconElement.tintColor = new Color('#ffffff')
+      chargingTimeIconElement.imageSize = new Size(14, 14)
+      batteryChargingTimeStack.addSpacer(3)
+
+      const chargingTimeElement = batteryChargingTimeStack.addText(`${chargeComplete}`)
+      chargingTimeElement.font = Font.mediumMonospacedSystemFont(12)
+      chargingTimeElement.textOpacity = 0.9
+      chargingTimeElement.textColor = Color.white()
+      chargingTimeElement.rightAlignText()
+    }
   }
 
   return widget
@@ -621,6 +696,7 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
 export async function createHomeScreenInlineWidget(config: Config, bl: Bluelink) {
   const refresh = await refreshDataForWidgetWithTimeout(bl, config)
   const status = refresh.status
+  const isGasVehicle = isGasWidgetVehicle(status)
 
   const isCharging = status.status.isCharging
   const isPluggedIn = status.status.isPluggedIn
@@ -634,15 +710,20 @@ export async function createHomeScreenInlineWidget(config: Config, bl: Bluelink)
   const widgetStack = widget.addStack()
   widgetStack.layoutHorizontally()
   const mainStack = widgetStack.addStack()
-  const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
+  const chargingIcon = isGasVehicle ? undefined : getChargingIcon(isCharging, isPluggedIn, true)
+  const gasLockState = getLockWidgetState(status)
 
   const icon = await progressCircleIconImageWithSymbol(
-    batteryPercent,
+    isGasVehicle ? 100 : batteryPercent,
     'hsla(0, 0%, 100%, 1.0)',
     'hsla(0, 0%, 100%, 0.3)',
     30,
     3,
-    chargingIcon ? await getTintedIconAsync(chargingIcon) : SFSymbol.named('car.fill').image,
+    isGasVehicle
+      ? SFSymbol.named(gasLockState.icon === 'locked' ? 'lock.fill' : 'lock.open.fill').image
+      : chargingIcon
+        ? await getTintedIconAsync(chargingIcon)
+        : SFSymbol.named('car.fill').image,
     chargingIcon ? 17 : 14,
   )
 
@@ -650,8 +731,8 @@ export async function createHomeScreenInlineWidget(config: Config, bl: Bluelink)
   iconStack.addImage(icon)
 
   //Only one line of text allowed in this style of widget
-  let rangeText = `${status.status.range} ${bl.getDistanceUnit()}`
-  if (isCharging) {
+  let rangeText = isGasVehicle ? getRangeWidgetText(status, bl) : `${status.status.range} ${bl.getDistanceUnit()}`
+  if (!isGasVehicle && isCharging) {
     const chargeComplete = getChargeCompletionString(lastSeen, remainingChargingTime, 'short', true)
     rangeText += ` \u{21BA} ${chargeComplete}`
   }
