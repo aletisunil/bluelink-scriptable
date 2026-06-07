@@ -1,6 +1,4 @@
 import { Bluelink } from 'lib/bluelink-regions/base'
-import { getEuropeAuthUrls, storeWebviewAuthResult, clearStoredWebviewAuthResult } from 'lib/bluelink-regions/europe'
-import { openLoginWebview } from './lib/util'
 import { form, confirm, quickOptions, destructiveConfirm } from './lib/scriptable-utils'
 
 const KEYCHAIN_BLUELINK_CONFIG_KEY = 'egmp-bluelink-config'
@@ -298,32 +296,10 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
           includeCancel: false,
         })
       }
-      if (state.region === 'europe' && previousState.region !== 'europe') {
-        const manufacturer = (state.manufacturer || 'hyundai').toLowerCase()
-        const urls = getEuropeAuthUrls(manufacturer)
-        confirm('Europe requires login through a webview. Login window will open now.', {
-          confirmButtonTitle: 'I understand',
-          includeCancel: false,
-          onConfirm: async () => {
-            if (!urls) return
-            try {
-              const redirectUrl = await openLoginWebview(urls.startUrl, urls.callbackUrl)
-              storeWebviewAuthResult(redirectUrl)
-            } catch {
-              // User closed webview without logging in — that's fine
-            }
-          },
-        })
-      }
-      if (state.manufacturer !== previousState.manufacturer) {
-        clearStoredWebviewAuthResult()
-      }
-
       return state
     },
     isFormValid: ({ username, password, region, pin, tempType, climateTempCold, climateTempWarm }) => {
-      const needsCredentials = region !== 'europe'
-      if (needsCredentials && (!username || !password)) return false
+      if (!username || !password) return false
       if (!region || !pin || !climateTempCold || !tempType || !climateTempWarm) return false
       if (tempType === 'C' && (climateTempCold < 17 || climateTempWarm > 27)) return false
       if (tempType === 'F' && (climateTempCold < 62 || climateTempWarm > 82)) return false
@@ -351,14 +327,12 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
         type: 'textInput',
         label: 'Bluelink Username',
         isRequired: true,
-        shouldHide: (state) => state.region === 'europe',
       },
       password: {
         type: 'textInput',
         label: 'Bluelink Password',
         isRequired: true,
         secure: true,
-        shouldHide: (state) => state.region === 'europe',
       },
       pin: {
         type: 'textInput',
