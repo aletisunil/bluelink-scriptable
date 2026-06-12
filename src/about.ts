@@ -1,4 +1,4 @@
-import { getTable, Div, P, Img, Spacer, quickOptions, OK } from 'lib/scriptable-utils'
+import { getTable, Div, P, Spacer, quickOptions, OK } from 'lib/scriptable-utils'
 import { GithubRelease, Version } from 'lib/version'
 import { getAppLogger } from './lib/util'
 
@@ -38,25 +38,22 @@ async function doUpgrade(url: string, appFile = `${Script.name()}.js`) {
 const { present, connect, setState } = getTable<{
   release: GithubRelease | undefined
   currentVersion: string
-  coffeeImage: Image | undefined
 }>({
   name: 'About App',
 })
 
 export async function loadAboutScreen() {
   // load version async
-  const version = new Version('andyfase', 'egmp-bluelink-scriptable')
-  version.getRelease().then((release) => setState({ release: release }))
-
-  // load image async
-  const req = new Request('https://bluelink.andyfase.com/images/coffee.png')
-  req.loadImage().then((image) => setState({ coffeeImage: image }))
+  const version = new Version('aletisunil', 'bluelink-scriptable')
+  version
+    .getRelease()
+    .then((release) => setState({ release: release }))
+    .catch(() => {})
 
   return present({
     defaultState: {
       release: undefined,
       currentVersion: version.getCurrentVersion(),
-      coffeeImage: undefined,
     },
     render: () => [
       pageTitle(),
@@ -98,18 +95,19 @@ const appDescription = connect(() => {
   )
 })
 
-const author = connect(({ state: { coffeeImage } }) => {
+const author = connect(() => {
   const divArray = [
-    P('Author: Andy Fase', {
+    P("Maintainer: Sunil Aleti (fork of Andy Fase's app)", {
       font: (n) => Font.mediumRoundedSystemFont(n),
       fontSize: 20,
       align: 'left',
     }),
   ]
-  if (coffeeImage) {
-    divArray.push(Img(coffeeImage, { align: 'right', width: '50%' }))
-  }
-  return Div(divArray, { height: 60, align: 'center', onTap: () => Safari.open('https://buymeacoffee.com/andyfase') })
+  return Div(divArray, {
+    height: 60,
+    align: 'center',
+    onTap: () => Safari.open('https://github.com/aletisunil/bluelink-scriptable'),
+  })
 })
 
 const currentVersion = connect(({ state: { currentVersion } }) => {
@@ -198,7 +196,7 @@ const upgradeNotes = connect(({ state: { currentVersion, release } }) => {
 const appWebsite = connect(() => {
   return Div(
     [
-      P('https://bluelink.andyfase.com', {
+      P('https://github.com/aletisunil/bluelink-scriptable', {
         font: (n) => Font.mediumRoundedSystemFont(n),
         fontSize: 20,
         color: Color.blue(),
@@ -207,7 +205,7 @@ const appWebsite = connect(() => {
     ],
     {
       onTap: async () => {
-        Safari.open('https://bluelink.andyfase.com')
+        Safari.open('https://github.com/aletisunil/bluelink-scriptable')
       },
     },
   )

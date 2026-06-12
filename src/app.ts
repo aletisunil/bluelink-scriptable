@@ -129,7 +129,7 @@ export async function createApp(config: Config, bl: Bluelink) {
 
   // async check if prompt for update is required
   if (config.promptForUpdate) {
-    const version = new Version('andyfase', 'egmp-bluelink-scriptable')
+    const version = new Version('aletisunil', 'bluelink-scriptable')
     version.promptForUpdate().then((updateRequired: boolean) => {
       if (updateRequired) {
         quickOptions(['See Details', 'Cancel', 'Never Ask Again'], {

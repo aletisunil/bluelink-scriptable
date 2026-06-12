@@ -30,13 +30,18 @@ export class Version {
   }
 
   public async promptForUpdate(): Promise<boolean> {
-    const latestRelease = await this.getLatestGithubRelease()
-    // releases are in the format v1.7.0 converted to number this ends up as 170.
-    // Hence we take off the patch version and check if the minor version is greater than the current one
-    const latest = Math.floor(Version.versionToNumber(latestRelease.version) / 10)
-    const current = Math.floor(Version.versionToNumber(this.currentVersion) / 10)
+    try {
+      const latestRelease = await this.getLatestGithubRelease()
+      // releases are in the format v1.7.0 converted to number this ends up as 170.
+      // Hence we take off the patch version and check if the minor version is greater than the current one
+      const latest = Math.floor(Version.versionToNumber(latestRelease.version) / 10)
+      const current = Math.floor(Version.versionToNumber(this.currentVersion) / 10)
 
-    return latest > current
+      return latest > current
+    } catch {
+      // repo may have no releases yet, or network failure - skip update prompt
+      return false
+    }
   }
 
   public async getReleaseVersion(): Promise<string> {
@@ -66,6 +71,9 @@ export class Version {
 
     let asseturl = ''
     const response = await request.loadJSON()
+    if (!response || !response.tag_name || !response.assets) {
+      throw new Error(`No release found for ${this.githubUser}/${this.githubRepoName}`)
+    }
     for (const asset of response.assets) {
       if (asset.name === ASSET_BINARY) {
         asseturl = asset.browser_download_url
