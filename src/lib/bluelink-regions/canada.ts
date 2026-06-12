@@ -11,12 +11,20 @@ import {
 } from './base'
 import { Config } from '../../config'
 import { isNotEmptyObject } from '../util'
+import { textInput } from '../scriptable-utils/'
 
 const DEFAULT_API_DOMAIN = 'mybluelink.ca'
 const API_DOMAINS: Record<string, string> = {
   hyundai: 'mybluelink.ca',
   kia: 'kiaconnect.ca',
   genesis: 'genesisconnect.ca',
+}
+
+interface MFAResponse {
+  requestId: string
+  otpKey?: string
+  email: string
+  phone?: string
 }
 
 export class BluelinkCanada extends Bluelink {
@@ -77,6 +85,24 @@ export class BluelinkCanada extends Bluelink {
     return obj
   }
 
+  protected getAdditionalHeaders(): Record<string, string> {
+    if (this.cache && this.cache.token.additionalTokens && this.cache.token.additionalTokens.deviceid) {
+      this.additionalHeaders.deviceid = this.cache.token.additionalTokens.deviceid
+    }
+    return this.additionalHeaders
+  }
+
+  private regenerateDeviceId(): void {
+    this.additionalHeaders.deviceid = UUID.string()
+    if (this.cache && this.cache.token) {
+      this.cache.token.additionalTokens = {
+        ...(this.cache.token.additionalTokens || {}),
+        deviceid: this.additionalHeaders.deviceid,
+      }
+      this.saveCache()
+    }
+  }
+
   private requestResponseValid(
     resp: Record<string, any>,
     payload: Record<string, any>,
@@ -114,6 +140,147 @@ export class BluelinkCanada extends Bluelink {
     return ''
   }
 
+  private async getMfaRequestDetails(username: string): Promise<MFAResponse> {
+    const resp = await this.request({
+      url: this.apiDomain + 'mfa/selverifmeth',
+      data: JSON.stringify({
+        mfaApiCode: '0107',
+        userAccount: username,
+      }),
+      validResponseFunction: this.requestResponseValid,
+      headers: {},
+      noAuth: true,
+    })
+
+    if (this.requestResponseValid(resp.resp, resp.json).valid) {
+      const result = resp.json.result || {}
+      const emailList = Array.isArray(result.emailList) ? result.emailList : []
+      const email = emailList.length > 0 ? emailList[0] : username
+      const phone = result.userPhone || undefined
+      return {
+        requestId: result.userInfoUuid,
+        email: email,
+        phone: phone,
+      }
+    }
+
+    const error = `Failed to get MFA request details: ${JSON.stringify(resp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+    if (this.config.debugLogging) this.logger.log(error)
+    throw Error(error)
+  }
+
+  protected async mfa(
+    username: string,
+    otpRequest: MFAResponse,
+    authCookie: string,
+  ): Promise<BluelinkTokens | undefined> {
+    const notifyBySms = this.config.mfaPreference === 'sms' && otpRequest.phone
+    const sendOtpResp = await this.request({
+      url: this.apiDomain + 'mfa/sendotp',
+      data: JSON.stringify({
+        otpMethod: notifyBySms ? 'S' : 'E',
+        mfaApiCode: '0107',
+        userAccount: otpRequest.email,
+        userPhone: notifyBySms ? otpRequest.phone : '',
+        userInfoUuid: otpRequest.requestId,
+      }),
+      validResponseFunction: this.requestResponseValid,
+      headers: {},
+      noAuth: true,
+    })
+    if (!this.requestResponseValid(sendOtpResp.resp, sendOtpResp.json).valid) {
+      this.regenerateDeviceId()
+      const error = `MFA Send Failed: ${JSON.stringify(sendOtpResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+      if (this.config.debugLogging) this.logger.log(error)
+      return undefined
+    }
+
+    const otpKey = sendOtpResp.json.result && sendOtpResp.json.result.otpKey
+    if (!otpKey) {
+      this.regenerateDeviceId()
+      const error = `MFA Send Failed: missing otpKey ${JSON.stringify(sendOtpResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+      if (this.config.debugLogging) this.logger.log(error)
+      return undefined
+    }
+    otpRequest.otpKey = otpKey
+
+    const otpCode = await textInput(`MFA code sent via ${notifyBySms ? 'sms' : 'email'}.`, {
+      submitText: 'Enter Code',
+      flavor: 'number',
+    })
+    if (!otpCode) {
+      if (this.config.debugLogging) this.logger.log('MFA Verify Failed / Cancelled')
+      return undefined
+    }
+
+    if (this.config.debugLogging) this.logger.log(`MFA Code entered: ${otpCode}`)
+    const validateOtpResp = await this.request({
+      url: this.apiDomain + 'mfa/validateotp',
+      data: JSON.stringify({
+        otpNo: otpCode,
+        userAccount: username,
+        otpKey: otpRequest.otpKey,
+        mfaApiCode: '0107',
+      }),
+      validResponseFunction: this.requestResponseValid,
+      headers: {},
+      noAuth: true,
+    })
+    if (!this.requestResponseValid(validateOtpResp.resp, validateOtpResp.json).valid) {
+      this.regenerateDeviceId()
+      const error = `MFA Verify Failed: ${JSON.stringify(validateOtpResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+      if (this.config.debugLogging) this.logger.log(error)
+      return undefined
+    }
+
+    const otpValidationKey = validateOtpResp.json.result && validateOtpResp.json.result.otpValidationKey
+    if (!otpValidationKey) {
+      this.regenerateDeviceId()
+      const error = `MFA Verify Failed: missing otpValidationKey ${JSON.stringify(validateOtpResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+      if (this.config.debugLogging) this.logger.log(error)
+      return undefined
+    }
+
+    if (!validateOtpResp.json.result.verifiedOtp) {
+      this.regenerateDeviceId()
+      const error = `MFA Verify Failed: OTP was not verified ${JSON.stringify(validateOtpResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+      if (this.config.debugLogging) this.logger.log(error)
+      return undefined
+    }
+
+    const genTokenResp = await this.request({
+      url: this.apiDomain + 'mfa/genmfatkn',
+      data: JSON.stringify({
+        userAccount: username,
+        otpEmail: otpRequest.email,
+        mfaApiCode: '0107',
+        otpValidationKey: otpValidationKey,
+        mfaYn: 'Y',
+      }),
+      validResponseFunction: this.requestResponseValid,
+      headers: {},
+      noAuth: true,
+    })
+    if (this.requestResponseValid(genTokenResp.resp, genTokenResp.json).valid) {
+      const token = genTokenResp.json.result.token
+      const deviceid = this.getAdditionalHeaders().deviceid || ''
+      return {
+        accessToken: token.accessToken,
+        refreshToken: token.refreshToken,
+        expiry: Math.floor(Date.now() / 1000) + Number(token.expireIn),
+        authCookie: authCookie,
+        additionalTokens: {
+          deviceid: deviceid,
+        },
+      }
+    }
+
+    this.regenerateDeviceId()
+    const error = `MFA token generation failed: ${JSON.stringify(genTokenResp.json)} request ${JSON.stringify(this.debugLastRequest)}`
+    if (this.config.debugLogging) this.logger.log(error)
+    return undefined
+  }
+
   protected async login(): Promise<BluelinkTokens | undefined> {
     // get cookie
     const cookieValue = await this.getSessionCookie()
@@ -130,13 +297,28 @@ export class BluelinkCanada extends Bluelink {
       validResponseFunction: this.requestResponseValid,
     })
     if (this.requestResponseValid(resp.resp, resp.json).valid) {
+      const deviceid = this.getAdditionalHeaders().deviceid || ''
       return {
         accessToken: resp.json.result.token.accessToken,
+        refreshToken: resp.json.result.token.refreshToken,
         expiry: Math.floor(Date.now() / 1000) + Number(resp.json.result.token.expireIn), // we only get a expireIn not a actual date
         authCookie: cookieValue,
+        additionalTokens: {
+          deviceid: deviceid,
+        },
       }
     }
 
+    if (
+      Object.hasOwn(resp.json, 'error') &&
+      Object.hasOwn(resp.json.error, 'errorCode') &&
+      resp.json.error.errorCode === '7110'
+    ) {
+      const otpRequest = await this.getMfaRequestDetails(this.config.auth.username)
+      return await this.mfa(this.config.auth.username, otpRequest, cookieValue)
+    }
+
+    this.regenerateDeviceId()
     const error = `Login Failed: ${JSON.stringify(resp.json)} request ${JSON.stringify(this.debugLastRequest)}`
     if (this.config.debugLogging) this.logger.log(error)
     return undefined
@@ -191,12 +373,25 @@ export class BluelinkCanada extends Bluelink {
     if (this.requestResponseValid(resp.resp, resp.json).valid && resp.json.result.vehicles.length > 0) {
       let vehicle = resp.json.result.vehicles[0]
       if (vin) {
+        let matchedVehicle = undefined
         for (const v of resp.json.result.vehicles) {
           if (v.vin === vin) {
-            vehicle = v
+            matchedVehicle = v
             break
           }
         }
+        if (!matchedVehicle) {
+          const cachedVehicle = this.getCachedCarForVin(vin)
+          if (cachedVehicle) {
+            if (this.config.debugLogging)
+              this.logger.log(`Configured VIN ${vin} not found in vehicle list, using cached car`)
+            return cachedVehicle
+          }
+          const error = `Configured VIN ${vin} not found in vehicle list`
+          if (this.config.debugLogging) this.logger.log(error)
+          throw Error(error)
+        }
+        vehicle = matchedVehicle
       }
       // should set car just in case its not already set
       await this.setCar(vehicle.vehicleId)

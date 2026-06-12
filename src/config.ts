@@ -296,23 +296,11 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
           includeCancel: false,
         })
       }
-      if (
-        state.region === 'europe' &&
-        state.manufacturer === 'Kia' &&
-        (previousState.region !== 'europe' || previousState.manufacturer !== 'Kia')
-      ) {
-        confirm('Kia in Europe requires login through a webview. Login window will open automatically.', {
-          confirmButtonTitle: 'I understand',
-          includeCancel: false,
-        })
-      }
-
       return state
     },
     isFormValid: ({ username, password, region, pin, tempType, climateTempCold, climateTempWarm }) => {
-      if (!username || !password || !region || !pin || !climateTempCold || !tempType || !climateTempWarm) {
-        return false
-      }
+      if (!username || !password) return false
+      if (!region || !pin || !climateTempCold || !tempType || !climateTempWarm) return false
       if (tempType === 'C' && (climateTempCold < 17 || climateTempWarm > 27)) return false
       if (tempType === 'F' && (climateTempCold < 62 || climateTempWarm > 82)) return false
       if (climateTempCold.toString().includes('.') && climateTempCold % 1 !== 0.5) return false
@@ -321,6 +309,20 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
     },
     submitButtonText: 'Save',
     fields: {
+      region: {
+        type: 'dropdown',
+        label: 'Choose your Bluelink region',
+        options: SUPPORTED_REGIONS,
+        allowCustom: false,
+        isRequired: true,
+      },
+      manufacturer: {
+        type: 'dropdown',
+        label: 'Choose your Car Manufacturer',
+        options: SUPPORTED_MANUFACTURERS,
+        allowCustom: false,
+        isRequired: true,
+      },
       username: {
         type: 'textInput',
         label: 'Bluelink Username',
@@ -338,20 +340,6 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
         isRequired: true,
         secure: true,
         flavor: 'number',
-      },
-      region: {
-        type: 'dropdown',
-        label: 'Choose your Bluelink region',
-        options: SUPPORTED_REGIONS,
-        allowCustom: false,
-        isRequired: true,
-      },
-      manufacturer: {
-        type: 'dropdown',
-        label: 'Choose your Car Manufacturer',
-        options: SUPPORTED_MANUFACTURERS,
-        allowCustom: false,
-        isRequired: true,
       },
       vin: {
         type: 'textInput',

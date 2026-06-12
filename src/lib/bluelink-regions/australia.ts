@@ -309,12 +309,25 @@ export class BluelinkAustralia extends Bluelink {
     if (this.requestResponseValid(resp.resp, resp.json).valid && resp.json.resMsg.vehicles.length > 0) {
       let vehicle = resp.json.resMsg.vehicles[0]
       if (vin) {
+        let matchedVehicle = undefined
         for (const v of resp.json.resMsg.vehicles) {
           if (v.vin === vin) {
-            vehicle = v
+            matchedVehicle = v
             break
           }
         }
+        if (!matchedVehicle) {
+          const cachedVehicle = this.getCachedCarForVin(vin)
+          if (cachedVehicle) {
+            if (this.config.debugLogging)
+              this.logger.log(`Configured VIN ${vin} not found in vehicle list, using cached car`)
+            return cachedVehicle
+          }
+          const error = `Configured VIN ${vin} not found in vehicle list`
+          if (this.config.debugLogging) this.logger.log(error)
+          throw Error(error)
+        }
+        vehicle = matchedVehicle
       }
 
       this.europeccs2 = vehicle.ccuCCS2ProtocolSupport
@@ -335,7 +348,23 @@ export class BluelinkAustralia extends Bluelink {
     throw Error(error)
   }
 
-  protected returnCarStatus(status: any, updateTime: number): BluelinkStatus {
+  private parseRemoteStatusTime(statusDate: unknown, fallbackUpdateTime: unknown): number {
+    if (typeof statusDate === 'string' && statusDate.length > 0) {
+      const parsed = Date.parse(statusDate)
+      if (!Number.isNaN(parsed)) return parsed
+
+      const compactDate = statusDate.replace(/[-:TZ]/g, '')
+      const match = compactDate.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/)
+      if (match) {
+        const [, year, month, day, hour, minute, second] = match
+        return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+      }
+    }
+
+    return Number(fallbackUpdateTime)
+  }
+
+  protected returnCarStatus(status: any, updateTime: unknown): BluelinkStatus {
     // cached status contains a wrapped status object along with odometer info - force status does not
     // force status also does not include a time field
 
@@ -380,7 +409,7 @@ export class BluelinkAustralia extends Bluelink {
 
     return {
       lastStatusCheck: Date.now(),
-      lastRemoteStatusCheck: Number(updateTime),
+      lastRemoteStatusCheck: this.parseRemoteStatusTime(status.Date, updateTime),
       isCharging: isCharging,
       isPluggedIn: status.Green.ChargingInformation.ConnectorFastening.State > 0 ? true : false,
       chargingPower: chargingPower,
